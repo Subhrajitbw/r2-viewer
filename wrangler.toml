@@ -1,0 +1,10 @@
+# wrangler.toml
+name = "r2-storage-manager"
+compatibility_date = "2025-11-23"
+pages_build_output_dir = ".vercel/output/static"
+
+# Bind your R2 bucket (optional but recommended)
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "your-bucket-name"
+preview_bucket_name = "your-bucket-name"
