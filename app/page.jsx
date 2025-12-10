@@ -401,14 +401,14 @@ export default function R2Manager() {
   }, [currentPath]);
 
   const fetchTotalStats = async () => {
-    try {
-      const { data } = await axios.get(`/api/storage?prefix=`);
-      setAllFiles(data.files || []);
-    } catch (error) {
-      console.error("Failed to fetch total stats");
-    }
-  };
-
+  try {
+    // NEW: Pass includeAll=true to get ALL files
+    const { data } = await axios.get(`/api/storage?includeAll=true`);
+    setAllFiles(data.files || []);
+  } catch (error) {
+    console.error("Failed to fetch total stats");
+  }
+};
   const fetchContent = async () => {
     setLoading(true);
     setSearchQuery("");

@@ -11,12 +11,64 @@ import { NextResponse } from "next/server";
 
 const BUCKET = process.env.S3_BUCKET;
 
+// Helper function to recursively list ALL objects in bucket
+async function listAllObjects(prefix = "") {
+  let allObjects = [];
+  let continuationToken = null;
+
+  do {
+    const command = new ListObjectsV2Command({
+      Bucket: BUCKET,
+      Prefix: prefix,
+      ContinuationToken: continuationToken,
+      MaxKeys: 1000, // Maximum per request
+    });
+
+    const data = await s3Client.send(command);
+    
+    if (data.Contents) {
+      allObjects = allObjects.concat(data.Contents);
+    }
+
+    continuationToken = data.NextContinuationToken;
+  } while (continuationToken);
+
+  return allObjects;
+}
+
 // 1. GET: List Files & Folders
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const prefix = searchParams.get("prefix") || "";
+  const includeAll = searchParams.get("includeAll") === "true"; // NEW: Flag for total stats
 
   try {
+    // If includeAll is true, return ALL files in bucket (for stats)
+    if (includeAll) {
+      const allObjects = await listAllObjects();
+      
+      const files = await Promise.all(
+        allObjects
+          .filter((f) => !f.Key.endsWith('/')) // Exclude folder markers
+          .map(async (f) => {
+            const getCmd = new GetObjectCommand({ Bucket: BUCKET, Key: f.Key });
+            const url = await getSignedUrl(s3Client, getCmd, { expiresIn: 3600 });
+
+            return {
+              key: f.Key,
+              name: f.Key.split('/').pop(),
+              size: f.Size,
+              lastModified: f.LastModified,
+              url: url,
+              type: f.Key.split('.').pop().toLowerCase()
+            };
+          })
+      );
+
+      return NextResponse.json({ files, folders: [] });
+    }
+
+    // Regular folder listing (current folder only)
     const command = new ListObjectsV2Command({
       Bucket: BUCKET,
       Prefix: prefix,
@@ -31,12 +83,11 @@ export async function GET(request) {
       displayName: p.Prefix.replace(prefix, "").replace("/", ""),
     }));
 
-    // Extract Files
+    // Extract Files (current folder only)
     const files = await Promise.all(
       (data.Contents || [])
-        .filter((f) => f.Key !== prefix)
+        .filter((f) => f.Key !== prefix && !f.Key.endsWith('/'))
         .map(async (f) => {
-          // Generate thumbnail/preview URL
           const getCmd = new GetObjectCommand({ Bucket: BUCKET, Key: f.Key });
           const url = await getSignedUrl(s3Client, getCmd, { expiresIn: 3600 });
 
@@ -44,7 +95,7 @@ export async function GET(request) {
             key: f.Key,
             name: f.Key.replace(prefix, ""),
             size: f.Size,
-            lastModified: f.LastModified, // Passed as ISO string automatically by AWS SDK
+            lastModified: f.LastModified,
             url: url,
             type: f.Key.split('.').pop().toLowerCase()
           };
@@ -88,4 +139,3 @@ export async function DELETE(request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
-
