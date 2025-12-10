@@ -2,7 +2,8 @@
 import { s3Client } from "@/lib/s3";
 import { 
   ListObjectsV2Command, 
-  DeleteObjectCommand, 
+  DeleteObjectCommand,
+  DeleteObjectsCommand, // NEW: For bulk delete
   PutObjectCommand, 
   GetObjectCommand 
 } from "@aws-sdk/client-s3";
@@ -21,7 +22,7 @@ async function listAllObjects(prefix = "") {
       Bucket: BUCKET,
       Prefix: prefix,
       ContinuationToken: continuationToken,
-      MaxKeys: 1000, // Maximum per request
+      MaxKeys: 1000,
     });
 
     const data = await s3Client.send(command);
@@ -40,33 +41,27 @@ async function listAllObjects(prefix = "") {
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const prefix = searchParams.get("prefix") || "";
-  const includeAll = searchParams.get("includeAll") === "true"; // NEW: Flag for total stats
 
   try {
-    // If includeAll is true, return ALL files in bucket (for stats)
-    if (includeAll) {
-      const allObjects = await listAllObjects();
-      
-      const files = await Promise.all(
-        allObjects
-          .filter((f) => !f.Key.endsWith('/')) // Exclude folder markers
-          .map(async (f) => {
-            const getCmd = new GetObjectCommand({ Bucket: BUCKET, Key: f.Key });
-            const url = await getSignedUrl(s3Client, getCmd, { expiresIn: 3600 });
+    // Fetch all files for total stats
+    const allObjects = await listAllObjects();
+    const allFilesData = await Promise.all(
+      allObjects
+        .filter((f) => !f.Key.endsWith('/'))
+        .map(async (f) => {
+          const getCmd = new GetObjectCommand({ Bucket: BUCKET, Key: f.Key });
+          const url = await getSignedUrl(s3Client, getCmd, { expiresIn: 3600 });
 
-            return {
-              key: f.Key,
-              name: f.Key.split('/').pop(),
-              size: f.Size,
-              lastModified: f.LastModified,
-              url: url,
-              type: f.Key.split('.').pop().toLowerCase()
-            };
-          })
-      );
-
-      return NextResponse.json({ files, folders: [] });
-    }
+          return {
+            key: f.Key,
+            name: f.Key.split('/').pop(),
+            size: f.Size,
+            lastModified: f.LastModified,
+            url: url,
+            type: f.Key.split('.').pop().toLowerCase()
+          };
+        })
+    );
 
     // Regular folder listing (current folder only)
     const command = new ListObjectsV2Command({
@@ -102,16 +97,69 @@ export async function GET(request) {
         })
     );
 
-    return NextResponse.json({ folders, files });
+    return NextResponse.json({ folders, files, allFiles: allFilesData });
   } catch (error) {
     console.error("❌ R2 CONNECTION ERROR:", error); 
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-// 2. POST: Generate Presigned URL for Upload
+// 2. POST: Generate Presigned URL for Upload OR Bulk Delete
 export async function POST(request) {
-  const { filename, contentType } = await request.json();
+  const body = await request.json();
+
+  // NEW: Handle bulk delete
+  if (body.action === "bulk-delete") {
+    const { keys } = body;
+
+    if (!keys || !Array.isArray(keys) || keys.length === 0) {
+      return NextResponse.json({ error: "No keys provided" }, { status: 400 });
+    }
+
+    try {
+      // S3 DeleteObjects supports up to 1000 objects at once
+      const results = { deleted: [], errors: [] };
+
+      // Process in chunks of 1000
+      for (let i = 0; i < keys.length; i += 1000) {
+        const chunk = keys.slice(i, i + 1000);
+        
+        const command = new DeleteObjectsCommand({
+          Bucket: BUCKET,
+          Delete: {
+            Objects: chunk.map(key => ({ Key: key })),
+            Quiet: false,
+          },
+        });
+
+        const response = await s3Client.send(command);
+        
+        if (response.Deleted) {
+          results.deleted.push(...response.Deleted.map(d => d.Key));
+        }
+        
+        if (response.Errors) {
+          results.errors.push(...response.Errors.map(e => ({
+            key: e.Key,
+            code: e.Code,
+            message: e.Message
+          })));
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        deleted: results.deleted.length,
+        errors: results.errors,
+      });
+    } catch (error) {
+      console.error("Bulk delete error:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+  }
+
+  // Original upload presigned URL generation
+  const { filename, contentType } = body;
 
   try {
     const command = new PutObjectCommand({
@@ -127,10 +175,14 @@ export async function POST(request) {
   }
 }
 
-// 3. DELETE: Remove a file
+// 3. DELETE: Remove a single file
 export async function DELETE(request) {
   const { searchParams } = new URL(request.url);
   const key = searchParams.get("key");
+
+  if (!key) {
+    return NextResponse.json({ error: "No key provided" }, { status: 400 });
+  }
 
   try {
     await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));

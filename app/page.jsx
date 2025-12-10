@@ -7,8 +7,8 @@ import {
   Loader2, Home, Download, RefreshCw,
   Search, Database, Settings, X, CheckCircle,
   FileVideo, FileAudio, FileCode, FileSpreadsheet, Eye, File as FileIcon,
-  Link2, Check, Copy, FolderOpen, HardDrive, TrendingUp, Filter, Grid, List,
-  MoreVertical, Info
+  Link2, Check, Copy, FolderOpen, HardDrive, TrendingUp, Grid, List,
+  Info, CheckSquare, Square, AlertTriangle
 } from "lucide-react";
 
 // --- Helper Functions ---
@@ -71,6 +71,59 @@ const Toast = ({ message, type = 'success', onClose }) => {
   );
 };
 
+// --- Bulk Delete Modal ---
+const BulkDeleteModal = ({ isOpen, onClose, onConfirm, selectedCount, isDeleting }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4 animate-in fade-in">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-200">
+        <div className="p-6 border-b border-gray-100">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-3 bg-red-100 rounded-xl">
+              <AlertTriangle className="text-red-600" size={28} />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-800">Confirm Deletion</h2>
+          </div>
+          <p className="text-gray-600 text-lg">
+            You are about to delete <span className="font-bold text-red-600 text-xl">{selectedCount}</span> file{selectedCount > 1 ? 's' : ''}. 
+          </p>
+          <p className="text-red-600 font-semibold mt-2">
+            ⚠️ This action cannot be undone!
+          </p>
+        </div>
+        
+        <div className="p-6 bg-gray-50 flex justify-end gap-3">
+          <button 
+            onClick={onClose}
+            disabled={isDeleting}
+            className="px-6 py-3 text-gray-700 hover:bg-gray-200 rounded-xl font-medium transition disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button 
+            onClick={onConfirm}
+            disabled={isDeleting}
+            className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl hover:from-red-600 hover:to-red-700 font-semibold flex items-center gap-2 shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isDeleting ? (
+              <>
+                <Loader2 className="animate-spin" size={18} />
+                Deleting...
+              </>
+            ) : (
+              <>
+                <Trash2 size={18} />
+                Delete {selectedCount} File{selectedCount > 1 ? 's' : ''}
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // --- File Preview Modal ---
 const FilePreviewModal = ({ file, isOpen, onClose, onCopyLink }) => {
   const [textContent, setTextContent] = useState(null);
@@ -104,7 +157,6 @@ const FilePreviewModal = ({ file, isOpen, onClose, onCopyLink }) => {
 
   return (
     <div className="fixed inset-0 bg-black/95 z-[150] flex flex-col animate-in fade-in duration-300">
-      {/* Header */}
       <div className="flex justify-between items-center p-6 bg-gradient-to-b from-black/80 to-transparent text-white backdrop-blur-xl border-b border-white/10">
         <div className="flex items-center gap-4 overflow-hidden flex-1">
           <div className="p-3 bg-white/10 rounded-xl backdrop-blur-sm">
@@ -146,7 +198,6 @@ const FilePreviewModal = ({ file, isOpen, onClose, onCopyLink }) => {
         </div>
       </div>
 
-      {/* Content Body */}
       <div className="flex-1 overflow-auto flex items-center justify-center p-8" onClick={onClose}>
         <div className="relative max-w-full max-h-full" onClick={(e) => e.stopPropagation()}>
           {category === 'image' && (
@@ -380,7 +431,7 @@ export default function R2Manager() {
   const [currentPath, setCurrentPath] = useState("");
   const [folders, setFolders] = useState([]);
   const [files, setFiles] = useState([]);
-  const [allFiles, setAllFiles] = useState([]); // NEW: Store all files for total stats
+  const [allFiles, setAllFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
@@ -389,33 +440,29 @@ export default function R2Manager() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortValue, setSortValue] = useState("time-desc");
   const [toast, setToast] = useState(null);
-  const [viewMode, setViewMode] = useState("grid"); // grid or list
-
-  // NEW: Fetch total stats on mount
-  useEffect(() => {
-    fetchTotalStats();
-  }, []);
+  const [viewMode, setViewMode] = useState("grid");
+  
+  // Multi-select state
+  const [selectedFiles, setSelectedFiles] = useState(new Set());
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     fetchContent();
   }, [currentPath]);
 
-  const fetchTotalStats = async () => {
-  try {
-    // NEW: Pass includeAll=true to get ALL files
-    const { data } = await axios.get(`/api/storage?includeAll=true`);
-    setAllFiles(data.files || []);
-  } catch (error) {
-    console.error("Failed to fetch total stats");
-  }
-};
   const fetchContent = async () => {
     setLoading(true);
     setSearchQuery("");
+    setSelectedFiles(new Set());
+    setIsSelectionMode(false);
+    
     try {
       const { data } = await axios.get(`/api/storage?prefix=${encodeURIComponent(currentPath)}`);
       setFolders(data.folders || []);
       setFiles(data.files || []);
+      setAllFiles(data.allFiles || []);
     } catch (error) {
       console.error(error);
       setToast({ message: 'Error loading files', type: 'error' });
@@ -447,7 +494,6 @@ export default function R2Manager() {
     };
   }, [files, folders, searchQuery, sortValue]);
 
-  // NEW: Calculate both current folder and total storage stats
   const storageStats = useMemo(() => {
     const currentSize = processedContent.files.reduce((acc, file) => acc + (file.size || 0), 0);
     const totalSize = allFiles.reduce((acc, file) => acc + (file.size || 0), 0);
@@ -458,6 +504,68 @@ export default function R2Manager() {
       totalSize
     };
   }, [processedContent.files, allFiles]);
+
+  // Multi-select handlers
+  const toggleFileSelection = (fileKey) => {
+    const newSelection = new Set(selectedFiles);
+    if (newSelection.has(fileKey)) {
+      newSelection.delete(fileKey);
+    } else {
+      newSelection.add(fileKey);
+    }
+    setSelectedFiles(newSelection);
+  };
+
+  const selectAll = () => {
+    const allFileKeys = new Set(processedContent.files.map(f => f.key));
+    setSelectedFiles(allFileKeys);
+  };
+
+  const deselectAll = () => {
+    setSelectedFiles(new Set());
+  };
+
+  const toggleSelectionMode = () => {
+    setIsSelectionMode(!isSelectionMode);
+    if (isSelectionMode) {
+      setSelectedFiles(new Set());
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    setIsDeleting(true);
+    const filesToDelete = Array.from(selectedFiles);
+
+    try {
+      // Use the bulk delete API endpoint
+      const { data } = await axios.post("/api/storage", {
+        action: "bulk-delete",
+        keys: filesToDelete,
+      });
+
+      setShowBulkDeleteModal(false);
+      setSelectedFiles(new Set());
+      setIsSelectionMode(false);
+      await fetchContent();
+
+      if (data.errors && data.errors.length > 0) {
+        setToast({ 
+          message: `Deleted ${data.deleted} files, ${data.errors.length} failed`, 
+          type: 'error' 
+        });
+      } else {
+        setToast({ 
+          message: `Successfully deleted ${data.deleted} file${data.deleted > 1 ? 's' : ''}`, 
+          type: 'success' 
+        });
+      }
+    } catch (error) {
+      console.error("Bulk delete error:", error);
+      setToast({ message: 'Bulk delete failed', type: 'error' });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const copyToClipboard = async (text) => {
     try {
@@ -493,7 +601,6 @@ export default function R2Manager() {
       const { data } = await axios.post("/api/storage", { filename, contentType: file.type });
       await axios.put(data.url, file, { headers: { "Content-Type": file.type } });
       await fetchContent();
-      await fetchTotalStats();
       setToast({ message: 'File uploaded successfully!', type: 'success' });
     } catch (error) {
       setToast({ message: 'Upload failed', type: 'error' });
@@ -507,7 +614,6 @@ export default function R2Manager() {
     try {
       await axios.delete(`/api/storage?key=${encodeURIComponent(key)}`);
       await fetchContent();
-      await fetchTotalStats();
       setToast({ message: 'File deleted successfully', type: 'success' });
     } catch (error) {
       setToast({ message: 'Delete failed', type: 'error' });
@@ -538,13 +644,20 @@ export default function R2Manager() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-orange-50/30 to-gray-50 p-4 sm:p-8">
       <div className="max-w-[1800px] mx-auto">
         
-        {/* Modals & Toast */}
+        {/* Modals */}
         <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
         <FilePreviewModal 
           file={previewFile} 
           isOpen={!!previewFile} 
           onClose={() => setPreviewFile(null)}
           onCopyLink={copyToClipboard}
+        />
+        <BulkDeleteModal
+          isOpen={showBulkDeleteModal}
+          onClose={() => setShowBulkDeleteModal(false)}
+          onConfirm={handleBulkDelete}
+          selectedCount={selectedFiles.size}
+          isDeleting={isDeleting}
         />
         {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
@@ -702,38 +815,87 @@ export default function R2Manager() {
               )}
             </div>
 
-            {/* View Controls */}
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-xl">
+            {/* Selection Mode Controls */}
+            {isSelectionMode && selectedFiles.size > 0 ? (
+              <div className="flex items-center gap-3 bg-orange-50 px-4 py-2 rounded-xl border-2 border-orange-200">
+                <span className="font-semibold text-orange-700">
+                  {selectedFiles.size} selected
+                </span>
                 <button
-                  onClick={() => setViewMode("grid")}
-                  className={`p-2 rounded-lg transition ${viewMode === "grid" ? 'bg-white shadow-sm text-orange-600' : 'text-gray-600 hover:text-gray-900'}`}
-                  title="Grid view"
+                  onClick={() => setShowBulkDeleteModal(true)}
+                  disabled={isDeleting}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition font-medium disabled:opacity-50"
                 >
-                  <Grid size={18} />
+                  <Trash2 size={16} />
+                  Delete
                 </button>
                 <button
-                  onClick={() => setViewMode("list")}
-                  className={`p-2 rounded-lg transition ${viewMode === "list" ? 'bg-white shadow-sm text-orange-600' : 'text-gray-600 hover:text-gray-900'}`}
-                  title="List view"
+                  onClick={deselectAll}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-medium"
                 >
-                  <List size={18} />
+                  Deselect All
+                </button>
+                <button
+                  onClick={toggleSelectionMode}
+                  className="p-2 hover:bg-gray-200 rounded-lg transition"
+                >
+                  <X size={20} />
                 </button>
               </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={toggleSelectionMode}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl font-medium transition ${
+                    isSelectionMode
+                      ? 'bg-orange-100 text-orange-700 border-2 border-orange-300'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-2 border-transparent'
+                  }`}
+                >
+                  <CheckSquare size={18} />
+                  {isSelectionMode ? 'Selection Mode' : 'Select'}
+                </button>
 
-              <select 
-                value={sortValue}
-                onChange={(e) => setSortValue(e.target.value)}
-                className="bg-white border-2 border-gray-200 text-gray-700 rounded-xl focus:ring-2 focus:ring-orange-500/30 focus:border-orange-500 px-4 py-2 outline-none cursor-pointer font-medium"
-              >
-                <option value="name-asc">Name (A-Z)</option>
-                <option value="name-desc">Name (Z-A)</option>
-                <option value="time-desc">Newest First</option>
-                <option value="time-asc">Oldest First</option>
-                <option value="size-desc">Largest First</option>
-                <option value="size-asc">Smallest First</option>
-              </select>
-            </div>
+                {isSelectionMode && (
+                  <button
+                    onClick={selectAll}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition font-medium"
+                  >
+                    Select All ({processedContent.files.length})
+                  </button>
+                )}
+
+                <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-xl">
+                  <button
+                    onClick={() => setViewMode("grid")}
+                    className={`p-2 rounded-lg transition ${viewMode === "grid" ? 'bg-white shadow-sm text-orange-600' : 'text-gray-600 hover:text-gray-900'}`}
+                    title="Grid view"
+                  >
+                    <Grid size={18} />
+                  </button>
+                  <button
+                    onClick={() => setViewMode("list")}
+                    className={`p-2 rounded-lg transition ${viewMode === "list" ? 'bg-white shadow-sm text-orange-600' : 'text-gray-600 hover:text-gray-900'}`}
+                    title="List view"
+                  >
+                    <List size={18} />
+                  </button>
+                </div>
+
+                <select 
+                  value={sortValue}
+                  onChange={(e) => setSortValue(e.target.value)}
+                  className="bg-white border-2 border-gray-200 text-gray-700 rounded-xl focus:ring-2 focus:ring-orange-500/30 focus:border-orange-500 px-4 py-2 outline-none cursor-pointer font-medium"
+                >
+                  <option value="name-asc">Name (A-Z)</option>
+                  <option value="name-desc">Name (Z-A)</option>
+                  <option value="time-desc">Newest First</option>
+                  <option value="time-asc">Oldest First</option>
+                  <option value="size-desc">Largest First</option>
+                  <option value="size-asc">Smallest First</option>
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Content Area */}
@@ -777,19 +939,36 @@ export default function R2Manager() {
                   )
                 ))}
 
-                {/* Files */}
+                {/* Files with Selection */}
                 {processedContent.files.map((file) => {
                   const category = getFileCategory(file.name);
                   const displayUrl = getFileUrl(file.url);
+                  const isSelected = selectedFiles.has(file.key);
                   
                   return viewMode === "grid" ? (
-                    <div key={file.key} className="group relative bg-white border-2 border-gray-200 rounded-2xl hover:shadow-xl hover:border-orange-300 transition-all duration-300 overflow-hidden flex flex-col">
+                    <div 
+                      key={file.key} 
+                      className={`group relative bg-white border-2 rounded-2xl hover:shadow-xl transition-all duration-300 overflow-hidden flex flex-col cursor-pointer
+                        ${isSelected ? 'border-orange-500 ring-4 ring-orange-500/20' : 'border-gray-200 hover:border-orange-300'}
+                      `}
+                      onClick={() => isSelectionMode ? toggleFileSelection(file.key) : setPreviewFile(file)}
+                    >
                       
+                      {/* Selection Checkbox Overlay */}
+                      {isSelectionMode && (
+                        <div className="absolute top-3 left-3 z-10">
+                          <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition ${
+                            isSelected 
+                              ? 'bg-orange-500 border-orange-500' 
+                              : 'bg-white border-gray-300 group-hover:border-orange-400'
+                          }`}>
+                            {isSelected && <Check size={16} className="text-white" strokeWidth={3} />}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Thumbnail */}
-                      <div 
-                        className="aspect-square bg-gradient-to-br from-gray-50 to-gray-100 relative overflow-hidden flex items-center justify-center cursor-pointer"
-                        onClick={() => setPreviewFile(file)}
-                      >
+                      <div className="aspect-square bg-gradient-to-br from-gray-50 to-gray-100 relative overflow-hidden flex items-center justify-center">
                         {category === 'image' ? (
                           <img 
                             src={file.url} 
@@ -809,39 +988,41 @@ export default function R2Manager() {
                         )}
 
                         {/* Hover Overlay */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center gap-2">
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); setPreviewFile(file); }}
-                            className="p-3 bg-white/90 backdrop-blur-sm text-gray-900 rounded-xl hover:bg-white transition shadow-lg transform hover:scale-110"
-                            title="Preview"
-                          >
-                            <Eye size={18} />
-                          </button>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); copyToClipboard(displayUrl); }}
-                            className="p-3 bg-white/90 backdrop-blur-sm text-gray-900 rounded-xl hover:bg-white transition shadow-lg transform hover:scale-110"
-                            title="Copy Link"
-                          >
-                            <Copy size={18} />
-                          </button>
-                          <a 
-                            href={displayUrl} 
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="p-3 bg-white/90 backdrop-blur-sm text-gray-900 rounded-xl hover:bg-white transition shadow-lg transform hover:scale-110"
-                            title="Download"
-                          >
-                            <Download size={18} />
-                          </a>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); handleDelete(file.key); }}
-                            className="p-3 bg-red-500/90 backdrop-blur-sm text-white rounded-xl hover:bg-red-600 transition shadow-lg transform hover:scale-110"
-                            title="Delete"
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        </div>
+                        {!isSelectionMode && (
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center gap-2">
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); setPreviewFile(file); }}
+                              className="p-3 bg-white/90 backdrop-blur-sm text-gray-900 rounded-xl hover:bg-white transition shadow-lg transform hover:scale-110"
+                              title="Preview"
+                            >
+                              <Eye size={18} />
+                            </button>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); copyToClipboard(displayUrl); }}
+                              className="p-3 bg-white/90 backdrop-blur-sm text-gray-900 rounded-xl hover:bg-white transition shadow-lg transform hover:scale-110"
+                              title="Copy Link"
+                            >
+                              <Copy size={18} />
+                            </button>
+                            <a 
+                              href={displayUrl} 
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="p-3 bg-white/90 backdrop-blur-sm text-gray-900 rounded-xl hover:bg-white transition shadow-lg transform hover:scale-110"
+                              title="Download"
+                            >
+                              <Download size={18} />
+                            </a>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); handleDelete(file.key); }}
+                              className="p-3 bg-red-500/90 backdrop-blur-sm text-white rounded-xl hover:bg-red-600 transition shadow-lg transform hover:scale-110"
+                              title="Delete"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       {/* File Info */}
@@ -856,7 +1037,26 @@ export default function R2Manager() {
                       </div>
                     </div>
                   ) : (
-                    <div key={file.key} className="flex items-center gap-4 p-4 rounded-xl hover:bg-gray-50 transition group border border-transparent hover:border-gray-200">
+                    // List view
+                    <div 
+                      key={file.key} 
+                      className={`flex items-center gap-4 p-4 rounded-xl transition group cursor-pointer ${
+                        isSelected 
+                          ? 'bg-orange-50 border-2 border-orange-300' 
+                          : 'hover:bg-gray-50 border border-transparent hover:border-gray-200'
+                      }`}
+                      onClick={() => isSelectionMode ? toggleFileSelection(file.key) : null}
+                    >
+                      {isSelectionMode && (
+                        <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center flex-shrink-0 transition ${
+                          isSelected 
+                            ? 'bg-orange-500 border-orange-500' 
+                            : 'bg-white border-gray-300'
+                        }`}>
+                          {isSelected && <Check size={16} className="text-white" strokeWidth={3} />}
+                        </div>
+                      )}
+
                       <div className="w-12 h-12 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl flex items-center justify-center flex-shrink-0">
                         {category === 'image' && <FileIcon size={24} className="text-gray-600" />}
                         {category === 'video' && <FileVideo size={24} className="text-blue-500" />}
@@ -872,38 +1072,40 @@ export default function R2Manager() {
                         <p className="text-sm text-gray-500">{formatSize(file.size)} • {new Date(file.lastModified).toLocaleDateString()}</p>
                       </div>
 
-                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition">
-                        <button 
-                          onClick={() => setPreviewFile(file)}
-                          className="p-2 hover:bg-gray-200 rounded-lg transition"
-                          title="Preview"
-                        >
-                          <Eye size={18} />
-                        </button>
-                        <button 
-                          onClick={() => copyToClipboard(displayUrl)}
-                          className="p-2 hover:bg-gray-200 rounded-lg transition"
-                          title="Copy Link"
-                        >
-                          <Copy size={18} />
-                        </button>
-                        <a 
-                          href={displayUrl} 
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-2 hover:bg-gray-200 rounded-lg transition"
-                          title="Download"
-                        >
-                          <Download size={18} />
-                        </a>
-                        <button 
-                          onClick={() => handleDelete(file.key)}
-                          className="p-2 hover:bg-red-100 text-red-600 rounded-lg transition"
-                          title="Delete"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
+                      {!isSelectionMode && (
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition">
+                          <button 
+                            onClick={() => setPreviewFile(file)}
+                            className="p-2 hover:bg-gray-200 rounded-lg transition"
+                            title="Preview"
+                          >
+                            <Eye size={18} />
+                          </button>
+                          <button 
+                            onClick={() => copyToClipboard(displayUrl)}
+                            className="p-2 hover:bg-gray-200 rounded-lg transition"
+                            title="Copy Link"
+                          >
+                            <Copy size={18} />
+                          </button>
+                          <a 
+                            href={displayUrl} 
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-2 hover:bg-gray-200 rounded-lg transition"
+                            title="Download"
+                          >
+                            <Download size={18} />
+                          </a>
+                          <button 
+                            onClick={() => handleDelete(file.key)}
+                            className="p-2 hover:bg-red-100 text-red-600 rounded-lg transition"
+                            title="Delete"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
