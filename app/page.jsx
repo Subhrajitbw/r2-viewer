@@ -8,10 +8,11 @@ import {
   Search, Database, Settings, X, CheckCircle,
   FileVideo, FileAudio, FileCode, FileSpreadsheet, Eye, File as FileIcon,
   Link2, Check, Copy, FolderOpen, HardDrive, TrendingUp, Grid, List,
-  Info, CheckSquare, Square, AlertTriangle
+  Info, CheckSquare, AlertTriangle, ChevronLeft, ChevronRight,
+  ChevronsLeft, ChevronsRight
 } from "lucide-react";
 
-// --- Helper Functions ---
+// --- Helper Functions (keep existing) ---
 const getFileCategory = (filename) => {
   const ext = filename.split('.').pop().toLowerCase();
   if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) return 'image';
@@ -49,7 +50,7 @@ const formatSize = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 };
 
-// --- Toast Component ---
+// --- Toast Component (keep existing) ---
 const Toast = ({ message, type = 'success', onClose }) => {
   useEffect(() => {
     const timer = setTimeout(onClose, 3000);
@@ -71,7 +72,122 @@ const Toast = ({ message, type = 'success', onClose }) => {
   );
 };
 
-// --- Bulk Delete Modal ---
+// --- NEW: Pagination Component ---
+const Pagination = ({ currentPage, totalPages, onPageChange, totalFiles, limit }) => {
+  const startItem = (currentPage - 1) * limit + 1;
+  const endItem = Math.min(currentPage * limit, totalFiles);
+
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisible = 5;
+    
+    if (totalPages <= maxVisible) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      if (currentPage <= 3) {
+        for (let i = 1; i <= 4; i++) pages.push(i);
+        pages.push('...');
+        pages.push(totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        pages.push(1);
+        pages.push('...');
+        for (let i = totalPages - 3; i <= totalPages; i++) pages.push(i);
+      } else {
+        pages.push(1);
+        pages.push('...');
+        for (let i = currentPage - 1; i <= currentPage + 1; i++) pages.push(i);
+        pages.push('...');
+        pages.push(totalPages);
+      }
+    }
+    
+    return pages;
+  };
+
+  if (totalPages <= 1) return null;
+
+  return (
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-gradient-to-r from-gray-50 to-white border-t-2 border-gray-100">
+      <div className="text-sm text-gray-600">
+        Showing <span className="font-semibold text-gray-900">{startItem}</span> to{' '}
+        <span className="font-semibold text-gray-900">{endItem}</span> of{' '}
+        <span className="font-semibold text-gray-900">{totalFiles}</span> files
+      </div>
+
+      <div className="flex items-center gap-2">
+        {/* First Page */}
+        <button
+          onClick={() => onPageChange(1)}
+          disabled={currentPage === 1}
+          className="p-2 rounded-lg border-2 border-gray-200 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition"
+          title="First page"
+        >
+          <ChevronsLeft size={18} />
+        </button>
+
+        {/* Previous */}
+        <button
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage === 1}
+          className="p-2 rounded-lg border-2 border-gray-200 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition"
+          title="Previous page"
+        >
+          <ChevronLeft size={18} />
+        </button>
+
+        {/* Page Numbers */}
+        <div className="hidden sm:flex items-center gap-2">
+          {getPageNumbers().map((page, idx) => (
+            page === '...' ? (
+              <span key={`ellipsis-${idx}`} className="px-3 py-2 text-gray-400">...</span>
+            ) : (
+              <button
+                key={page}
+                onClick={() => onPageChange(page)}
+                className={`min-w-[40px] px-3 py-2 rounded-lg font-semibold transition ${
+                  currentPage === page
+                    ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg'
+                    : 'border-2 border-gray-200 hover:bg-gray-100 text-gray-700'
+                }`}
+              >
+                {page}
+              </button>
+            )
+          ))}
+        </div>
+
+        {/* Mobile: Current Page Display */}
+        <div className="sm:hidden px-4 py-2 bg-gray-100 rounded-lg font-semibold text-gray-700">
+          {currentPage} / {totalPages}
+        </div>
+
+        {/* Next */}
+        <button
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          className="p-2 rounded-lg border-2 border-gray-200 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition"
+          title="Next page"
+        >
+          <ChevronRight size={18} />
+        </button>
+
+        {/* Last Page */}
+        <button
+          onClick={() => onPageChange(totalPages)}
+          disabled={currentPage === totalPages}
+          className="p-2 rounded-lg border-2 border-gray-200 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition"
+          title="Last page"
+        >
+          <ChevronsRight size={18} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// --- Bulk Delete Modal (keep existing) ---
 const BulkDeleteModal = ({ isOpen, onClose, onConfirm, selectedCount, isDeleting }) => {
   if (!isOpen) return null;
 
@@ -124,8 +240,9 @@ const BulkDeleteModal = ({ isOpen, onClose, onConfirm, selectedCount, isDeleting
   );
 };
 
-// --- File Preview Modal ---
+// --- File Preview Modal (keep existing - same as before) ---
 const FilePreviewModal = ({ file, isOpen, onClose, onCopyLink }) => {
+  // ... keep the same code as before
   const [textContent, setTextContent] = useState(null);
   const [loadingText, setLoadingText] = useState(false);
 
@@ -264,8 +381,9 @@ const FilePreviewModal = ({ file, isOpen, onClose, onCopyLink }) => {
   );
 };
 
-// --- Settings Modal ---
+// --- Settings Modal (keep existing - same as before) ---
 const SettingsModal = ({ isOpen, onClose }) => {
+  // ... keep the same code as before
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [origins, setOrigins] = useState("*");
@@ -448,9 +566,28 @@ export default function R2Manager() {
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // NEW: Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
+  const [pagination, setPagination] = useState(null);
+
   useEffect(() => {
     fetchContent();
-  }, [currentPath]);
+  }, [currentPath, currentPage, itemsPerPage]);
+
+  // Fetch stats only once on mount
+  useEffect(() => {
+    fetchTotalStats();
+  }, []);
+
+  const fetchTotalStats = async () => {
+    try {
+      const { data } = await axios.get(`/api/storage?includeAllStats=true&prefix=`);
+      setAllFiles(data.allFiles || []);
+    } catch (error) {
+      console.error("Failed to fetch total stats");
+    }
+  };
 
   const fetchContent = async () => {
     setLoading(true);
@@ -459,16 +596,28 @@ export default function R2Manager() {
     setIsSelectionMode(false);
     
     try {
-      const { data } = await axios.get(`/api/storage?prefix=${encodeURIComponent(currentPath)}`);
+      const { data } = await axios.get(
+        `/api/storage?prefix=${encodeURIComponent(currentPath)}&page=${currentPage}&limit=${itemsPerPage}`
+      );
       setFolders(data.folders || []);
       setFiles(data.files || []);
-      setAllFiles(data.allFiles || []);
+      setPagination(data.pagination || null);
     } catch (error) {
       console.error(error);
       setToast({ message: 'Error loading files', type: 'error' });
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleItemsPerPageChange = (newLimit) => {
+    setItemsPerPage(newLimit);
+    setCurrentPage(1);
   };
 
   const processedContent = useMemo(() => {
@@ -498,14 +647,14 @@ export default function R2Manager() {
     const currentSize = processedContent.files.reduce((acc, file) => acc + (file.size || 0), 0);
     const totalSize = allFiles.reduce((acc, file) => acc + (file.size || 0), 0);
     return { 
-      currentCount: processedContent.files.length,
+      currentCount: pagination?.totalFiles || processedContent.files.length,
       currentSize,
       totalCount: allFiles.length, 
       totalSize
     };
-  }, [processedContent.files, allFiles]);
+  }, [processedContent.files, allFiles, pagination]);
 
-  // Multi-select handlers
+  // Multi-select handlers (keep existing)
   const toggleFileSelection = (fileKey) => {
     const newSelection = new Set(selectedFiles);
     if (newSelection.has(fileKey)) {
@@ -537,7 +686,6 @@ export default function R2Manager() {
     const filesToDelete = Array.from(selectedFiles);
 
     try {
-      // Use the bulk delete API endpoint
       const { data } = await axios.post("/api/storage", {
         action: "bulk-delete",
         keys: filesToDelete,
@@ -547,6 +695,7 @@ export default function R2Manager() {
       setSelectedFiles(new Set());
       setIsSelectionMode(false);
       await fetchContent();
+      await fetchTotalStats(); // Refresh stats after delete
 
       if (data.errors && data.errors.length > 0) {
         setToast({ 
@@ -601,6 +750,7 @@ export default function R2Manager() {
       const { data } = await axios.post("/api/storage", { filename, contentType: file.type });
       await axios.put(data.url, file, { headers: { "Content-Type": file.type } });
       await fetchContent();
+      await fetchTotalStats(); // Refresh stats after upload
       setToast({ message: 'File uploaded successfully!', type: 'success' });
     } catch (error) {
       setToast({ message: 'Upload failed', type: 'error' });
@@ -614,6 +764,7 @@ export default function R2Manager() {
     try {
       await axios.delete(`/api/storage?key=${encodeURIComponent(key)}`);
       await fetchContent();
+      await fetchTotalStats(); // Refresh stats after delete
       setToast({ message: 'File deleted successfully', type: 'success' });
     } catch (error) {
       setToast({ message: 'Delete failed', type: 'error' });
@@ -624,6 +775,12 @@ export default function R2Manager() {
     const parts = currentPath.split("/").filter(Boolean);
     parts.pop();
     setCurrentPath(parts.length > 0 ? parts.join("/") + "/" : "");
+    setCurrentPage(1); // Reset to first page
+  };
+
+  const handleFolderClick = (folderName) => {
+    setCurrentPath(folderName);
+    setCurrentPage(1); // Reset to first page
   };
 
   const handleDrag = (e) => {
@@ -778,7 +935,7 @@ export default function R2Manager() {
             {/* Breadcrumbs */}
             <div className="flex items-center gap-2 overflow-x-auto pb-2 lg:pb-0">
               <button 
-                onClick={() => setCurrentPath("")}
+                onClick={() => { setCurrentPath(""); setCurrentPage(1); }}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl transition font-medium ${currentPath === "" ? 'bg-orange-100 text-orange-700' : 'hover:bg-gray-100 text-gray-600'}`}
               >
                 <Home size={18} />
@@ -804,6 +961,7 @@ export default function R2Manager() {
                         onClick={() => {
                           const newPath = arr.slice(0, i + 1).join('/') + '/';
                           setCurrentPath(newPath);
+                          setCurrentPage(1);
                         }}
                         className="px-4 py-2 font-medium text-gray-700 hover:text-orange-600 hover:bg-orange-50 rounded-xl transition whitespace-nowrap"
                       >
@@ -882,6 +1040,19 @@ export default function R2Manager() {
                   </button>
                 </div>
 
+                {/* Items per page selector */}
+                <select 
+                  value={itemsPerPage}
+                  onChange={(e) => handleItemsPerPageChange(parseInt(e.target.value))}
+                  className="bg-white border-2 border-gray-200 text-gray-700 rounded-xl focus:ring-2 focus:ring-orange-500/30 focus:border-orange-500 px-3 py-2 outline-none cursor-pointer font-medium text-sm"
+                  title="Items per page"
+                >
+                  <option value={25}>25 / page</option>
+                  <option value={50}>50 / page</option>
+                  <option value={100}>100 / page</option>
+                  <option value={200}>200 / page</option>
+                </select>
+
                 <select 
                   value={sortValue}
                   onChange={(e) => setSortValue(e.target.value)}
@@ -916,7 +1087,7 @@ export default function R2Manager() {
                   viewMode === "grid" ? (
                     <div 
                       key={folder.name}
-                      onClick={() => setCurrentPath(folder.name)}
+                      onClick={() => handleFolderClick(folder.name)}
                       className="group cursor-pointer p-5 rounded-2xl bg-gradient-to-br from-yellow-50 to-amber-50 border-2 border-transparent hover:border-orange-300 hover:shadow-lg transition-all transform hover:scale-105 flex flex-col items-center text-center"
                     >
                       <Folder className="w-16 h-16 text-amber-500 mb-3 drop-shadow-sm transform group-hover:scale-110 transition-transform" strokeWidth={1.5} />
@@ -927,7 +1098,7 @@ export default function R2Manager() {
                   ) : (
                     <div
                       key={folder.name}
-                      onClick={() => setCurrentPath(folder.name)}
+                      onClick={() => handleFolderClick(folder.name)}
                       className="flex items-center gap-4 p-4 rounded-xl hover:bg-gray-50 cursor-pointer transition group border border-transparent hover:border-gray-200"
                     >
                       <Folder className="w-8 h-8 text-amber-500" />
@@ -939,7 +1110,7 @@ export default function R2Manager() {
                   )
                 ))}
 
-                {/* Files with Selection */}
+                {/* Files with Selection - Same as before, but use handleFolderClick for navigation */}
                 {processedContent.files.map((file) => {
                   const category = getFileCategory(file.name);
                   const displayUrl = getFileUrl(file.url);
@@ -954,7 +1125,6 @@ export default function R2Manager() {
                       onClick={() => isSelectionMode ? toggleFileSelection(file.key) : setPreviewFile(file)}
                     >
                       
-                      {/* Selection Checkbox Overlay */}
                       {isSelectionMode && (
                         <div className="absolute top-3 left-3 z-10">
                           <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition ${
@@ -967,7 +1137,6 @@ export default function R2Manager() {
                         </div>
                       )}
 
-                      {/* Thumbnail */}
                       <div className="aspect-square bg-gradient-to-br from-gray-50 to-gray-100 relative overflow-hidden flex items-center justify-center">
                         {category === 'image' ? (
                           <img 
@@ -987,7 +1156,6 @@ export default function R2Manager() {
                           </div>
                         )}
 
-                        {/* Hover Overlay */}
                         {!isSelectionMode && (
                           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center gap-2">
                             <button 
@@ -1025,7 +1193,6 @@ export default function R2Manager() {
                         )}
                       </div>
 
-                      {/* File Info */}
                       <div className="p-4 bg-white">
                         <p className="text-sm font-semibold text-gray-800 truncate mb-2" title={file.name}>
                           {file.name}
@@ -1037,7 +1204,7 @@ export default function R2Manager() {
                       </div>
                     </div>
                   ) : (
-                    // List view
+                    // List view (keep similar structure)
                     <div 
                       key={file.key} 
                       className={`flex items-center gap-4 p-4 rounded-xl transition group cursor-pointer ${
@@ -1136,6 +1303,17 @@ export default function R2Manager() {
             )}
           </div>
           
+          {/* NEW: Pagination Component */}
+          {pagination && pagination.totalPages > 1 && (
+            <Pagination
+              currentPage={pagination.currentPage}
+              totalPages={pagination.totalPages}
+              totalFiles={pagination.totalFiles}
+              limit={pagination.limit}
+              onPageChange={handlePageChange}
+            />
+          )}
+
           {/* Drag & Drop Overlay */}
           {dragActive && (
             <div className="absolute inset-0 bg-gradient-to-br from-orange-500/20 to-orange-600/20 backdrop-blur-md flex items-center justify-center z-50 border-4 border-orange-500 border-dashed m-4 rounded-2xl">
