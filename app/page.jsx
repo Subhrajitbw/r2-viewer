@@ -6,7 +6,8 @@ import {
   Folder, FileText, Upload, Trash2, ArrowLeft, 
   Loader2, Home, Download, RefreshCw,
   Search, Database, Settings, X, CheckCircle,
-  FileVideo, FileAudio, FileCode, FileSpreadsheet, Eye, File as FileIcon
+  FileVideo, FileAudio, FileCode, FileSpreadsheet, Eye, File as FileIcon,
+  Link2, Check, Copy
 } from "lucide-react";
 
 // --- Helper: Determine File Category ---
@@ -22,8 +23,42 @@ const getFileCategory = (filename) => {
   return 'other';
 };
 
+// --- Helper: Get custom domain URL ---
+const getFileUrl = (originalUrl) => {
+  const customDomain = process.env.NEXT_PUBLIC_R2_CUSTOM_DOMAIN;
+  if (!customDomain) return originalUrl;
+  
+  try {
+    const url = new URL(originalUrl);
+    const customDomainUrl = new URL(customDomain);
+    return `${customDomainUrl.origin}${url.pathname}`;
+  } catch (e) {
+    return originalUrl;
+  }
+};
+
+// --- Toast Component ---
+const Toast = ({ message, type = 'success', onClose }) => {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 3000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  return (
+    <div className="fixed bottom-6 right-6 z-[200] animate-in slide-in-from-bottom-4 fade-in duration-300">
+      <div className={`
+        flex items-center gap-3 px-4 py-3 rounded-lg shadow-2xl backdrop-blur-md border
+        ${type === 'success' ? 'bg-green-500/90 border-green-400 text-white' : 'bg-red-500/90 border-red-400 text-white'}
+      `}>
+        {type === 'success' ? <Check size={20} /> : <X size={20} />}
+        <span className="font-medium">{message}</span>
+      </div>
+    </div>
+  );
+};
+
 // --- Sub-Component: File Preview Modal ---
-const FilePreviewModal = ({ file, isOpen, onClose }) => {
+const FilePreviewModal = ({ file, isOpen, onClose, onCopyLink }) => {
   const [textContent, setTextContent] = useState(null);
   const [loadingText, setLoadingText] = useState(false);
 
@@ -40,7 +75,6 @@ const FilePreviewModal = ({ file, isOpen, onClose }) => {
     try {
       const res = await fetch(file.url);
       const text = await res.text();
-      // Truncate if too long for preview
       setTextContent(text.length > 50000 ? text.substring(0, 50000) + "... (Preview Truncated)" : text);
     } catch (e) {
       setTextContent("Error loading text content.");
@@ -52,6 +86,7 @@ const FilePreviewModal = ({ file, isOpen, onClose }) => {
   if (!isOpen || !file) return null;
 
   const category = getFileCategory(file.name);
+  const displayUrl = getFileUrl(file.url);
 
   return (
     <div className="fixed inset-0 bg-black/90 z-[150] flex flex-col animate-in fade-in duration-200">
@@ -72,8 +107,14 @@ const FilePreviewModal = ({ file, isOpen, onClose }) => {
         </div>
         
         <div className="flex items-center gap-3">
+          <button 
+            onClick={() => onCopyLink(displayUrl)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm font-medium"
+          >
+            <Link2 size={16} /> Copy Link
+          </button>
           <a 
-            href={file.url} 
+            href={displayUrl} 
             download
             target="_blank"
             className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-lg hover:bg-gray-200 transition text-sm font-medium"
@@ -139,7 +180,7 @@ const FilePreviewModal = ({ file, isOpen, onClose }) => {
               <h3 className="text-xl font-bold text-gray-800 mb-2">Preview not available</h3>
               <p className="text-gray-500 mb-6">This file type cannot be previewed directly in the browser.</p>
               <a 
-                href={file.url} 
+                href={displayUrl} 
                 target="_blank"
                 className="px-6 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition font-medium w-full"
               >
@@ -284,11 +325,11 @@ export default function R2Manager() {
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   
-  // New States
   const [showSettings, setShowSettings] = useState(false);
-  const [previewFile, setPreviewFile] = useState(null); // For the preview modal
+  const [previewFile, setPreviewFile] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortValue, setSortValue] = useState("time-desc"); 
+  const [toast, setToast] = useState(null);
 
   useEffect(() => {
     fetchContent();
@@ -333,10 +374,41 @@ export default function R2Manager() {
     };
   }, [files, folders, searchQuery, sortValue]);
 
+  // FIX: Calculate storage stats from processedContent (filtered files)
   const storageStats = useMemo(() => {
-    const totalSize = files.reduce((acc, file) => acc + file.size, 0);
-    return { count: files.length, size: totalSize };
-  }, [files]);
+    const totalSize = processedContent.files.reduce((acc, file) => acc + (file.size || 0), 0);
+    return { count: processedContent.files.length, size: totalSize };
+  }, [processedContent.files]);
+
+  // Copy to clipboard function
+  const copyToClipboard = async (text) => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        setToast({ message: 'Link copied to clipboard!', type: 'success' });
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        try {
+          document.execCommand('copy');
+          setToast({ message: 'Link copied to clipboard!', type: 'success' });
+        } catch (err) {
+          setToast({ message: 'Failed to copy link', type: 'error' });
+        }
+        
+        document.body.removeChild(textArea);
+      }
+    } catch (err) {
+      console.error('Failed to copy:', err);
+      setToast({ message: 'Failed to copy link', type: 'error' });
+    }
+  };
 
   const handleUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -401,7 +473,13 @@ export default function R2Manager() {
         
         {/* Modals */}
         <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
-        <FilePreviewModal file={previewFile} isOpen={!!previewFile} onClose={() => setPreviewFile(null)} />
+        <FilePreviewModal 
+          file={previewFile} 
+          isOpen={!!previewFile} 
+          onClose={() => setPreviewFile(null)}
+          onCopyLink={copyToClipboard}
+        />
+        {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
@@ -413,7 +491,7 @@ export default function R2Manager() {
               <Database size={14} />
               <span>{storageStats.count} items</span>
               <span>•</span>
-              <span>{formatSize(storageStats.size)} in current folder</span>
+              <span>{formatSize(storageStats.size)}</span>
             </div>
           </div>
 
@@ -536,6 +614,8 @@ export default function R2Manager() {
                 {/* Files */}
                 {processedContent.files.map((file) => {
                   const category = getFileCategory(file.name);
+                  const displayUrl = getFileUrl(file.url);
+                  
                   return (
                     <div key={file.key} className="group relative bg-white border border-gray-200 rounded-xl hover:shadow-lg hover:border-orange-200 transition-all duration-200 overflow-hidden flex flex-col">
                       
@@ -553,7 +633,6 @@ export default function R2Manager() {
                           />
                         ) : (
                           <div className="flex flex-col items-center text-gray-400">
-                             {/* Dynamic Icons based on type */}
                              {category === 'video' && <FileVideo size={48} className="mb-2 text-blue-400" />}
                              {category === 'audio' && <FileAudio size={48} className="mb-2 text-purple-400" />}
                              {category === 'code' && <FileCode size={48} className="mb-2 text-green-400" />}
@@ -574,8 +653,15 @@ export default function R2Manager() {
                           >
                             <Eye size={16} />
                           </button>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); copyToClipboard(displayUrl); }}
+                            className="p-2 bg-white text-gray-900 rounded-full hover:scale-110 hover:bg-green-500 hover:text-white transition shadow-lg"
+                            title="Copy Link"
+                          >
+                            <Copy size={16} />
+                          </button>
                           <a 
-                            href={file.url} 
+                            href={displayUrl} 
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={(e) => e.stopPropagation()}
